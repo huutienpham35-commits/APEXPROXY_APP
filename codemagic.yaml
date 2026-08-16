@@ -1,38 +1,13 @@
 workflows:
-  ios-ipa:
-    name: Build IPA
-    max_build_duration: 120
+  list-schemes:
+    name: List Schemes
+    max_build_duration: 30
     instance_type: mac_mini_m2
     environment:
       xcode: latest
-      cocoapods: default
-      vars:
-        XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
-        XCODE_SCHEME: "ThreeOneOSFive"
     scripts:
-      - name: Build Archive
+      - name: List available schemes
         script: |
-          xcodebuild archive \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -archivePath build/ThreeOneOSFive.xcarchive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            -destination 'generic/platform=iOS'
-
-      - name: Export IPA
-        script: |
-          xcodebuild -exportArchive \
-            -archivePath build/ThreeOneOSFive.xcarchive \
-            -exportPath build/ios/ipa \
-            -exportOptionsPlist /dev/null || true
-
-          # Tạo IPA thủ công nếu export thất bại
-          mkdir -p build/ios/ipa
-          cd build/ThreeOneOSFive.xcarchive/Products/Applications
-          zip -r ../../../../ios/ipa/ThreeOneOSFive.ipa ThreeOneOSFive.app
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - build/**/*.xcarchive
+          echo "===== Listing schemes ====="
+          xcodebuild -list -project ThreeOneOSFive.xcodeproj
+          echo "===== Done ====="
