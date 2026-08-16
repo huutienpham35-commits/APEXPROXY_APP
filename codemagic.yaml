@@ -7,35 +7,45 @@ workflows:
     environment:
       xcode: latest
       cocoapods: default
+
       vars:
         XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
         XCODE_SCHEME: "3105"
+        ARCHIVE_PATH: "build/3105.xcarchive"
 
     scripts:
-      - name: Check BodyProxy Resources
+      # ============================================================
+      # 1. CHECK PROJECT
+      # ============================================================
+      - name: Check Project
         script: |
+          set -e
+
           cd "$CM_BUILD_DIR"
 
           echo "========================================"
-          echo "CHECK BODYPROXY"
+          echo "PROJECT INFORMATION"
           echo "========================================"
+
           echo "CM_BUILD_DIR=$CM_BUILD_DIR"
           echo "PWD=$(pwd)"
+          echo "XCODE_PROJECT=$XCODE_PROJECT"
+          echo "XCODE_SCHEME=$XCODE_SCHEME"
 
           echo ""
-          echo "=== ROOT ==="
+          echo "=== ROOT FILES ==="
           ls -la
 
           echo ""
-          echo "=== ThreeOneOSFive ==="
+          echo "=== THREEONEOSFIVE ==="
           ls -la ThreeOneOSFive || true
 
           echo ""
-          echo "=== BodyProxy ==="
+          echo "=== BODYPROXY ==="
           ls -la ThreeOneOSFive/BodyProxy || true
 
           echo ""
-          echo "=== CACHE_RES FILES ==="
+          echo "=== ALL CACHE_RES FILES ==="
           find "$CM_BUILD_DIR" -type f -name "*.cache_res" -print || true
 
           echo ""
@@ -44,67 +54,281 @@ workflows:
 
           echo ""
           echo "=== GIT STATUS ==="
-          git status --short
+          git status --short || true
 
-          echo ""
-          echo "=== CHECK REQUIRED FILES ==="
 
-          for file in \
-            ThreeOneOSFive/BodyProxy/Body.cache_res \
-            ThreeOneOSFive/BodyProxy/Chest.cache_res \
-            ThreeOneOSFive/BodyProxy/Magic.cache_res \
-            ThreeOneOSFive/BodyProxy/Drag.cache_res
+      # ============================================================
+      # 2. REMOVE MISSING CACHE_RES REFERENCES
+      # ============================================================
+      - name: Fix Missing Cache Resources
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          PBXPROJ="$CM_BUILD_DIR/ThreeOneOSFive.xcodeproj/project.pbxproj"
+          RESOURCE_DIR="$CM_BUILD_DIR/ThreeOneOSFive/BodyProxy"
+
+          echo "========================================"
+          echo "FIX MISSING CACHE RESOURCES"
+          echo "========================================"
+
+          if [ ! -f "$PBXPROJ" ]; then
+            echo "ERROR: project.pbxproj not found:"
+            echo "$PBXPROJ"
+            exit 1
+          fi
+
+          # Backup project file
+          cp "$PBXPROJ" "$PBXPROJ.backup"
+
+          FILES="
+          Body.cache_res
+          Chest.cache_res
+          Magic.cache_res
+          Drag.cache_res
+          "
+
+          for FILE in $FILES
           do
-            if [ -f "$file" ]; then
-              echo "[OK] $file"
+            FULL_PATH="$RESOURCE_DIR/$FILE"
+
+            echo ""
+            echo "Checking: $FILE"
+
+            if [ -f "$FULL_PATH" ]; then
+              echo "[OK] Found: $FULL_PATH"
             else
-              echo "[MISSING] $file"
+              echo "[MISSING] $FULL_PATH"
+              echo "Removing Xcode reference for: $FILE"
+
+              # Remove PBXBuildFile entry
+              sed -i '' "/\/\* ${FILE} in Resources \*\//d" "$PBXPROJ"
+
+              # Remove PBXFileReference and group entries
+              sed -i '' "/\/\* ${FILE} \*\//d" "$PBXPROJ"
             fi
           done
 
-      - name: Build Archive
+          echo ""
+          echo "========================================"
+          echo "REMAINING CACHE_RES REFERENCES"
+          echo "========================================"
+
+          grep -n "cache_res" "$PBXPROJ" || true
+
+          echo ""
+          echo "=== VALIDATE PROJECT ==="
+
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -showBuildSettings > /dev/null
+
+          echo "[OK] Xcode project is readable"
+
+
+      # ============================================================
+      # 3. CLEAN
+      # ============================================================
+      - name: Clean Build
         script: |
+          set -e
+
           cd "$CM_BUILD_DIR"
 
-          xcodebuild archive \
+          echo "========================================"
+          echo "CLEAN BUILD"
+          echo "========================================"
+
+          rm -rf "$CM_BUILD_DIR/build"
+
+          xcodebuild clean \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
-            -archivePath "$CM_BUILD_DIR/build/3105.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             -destination 'generic/platform=iOS'
 
-      - name: Create IPA
+          echo "[OK] Clean completed"
+
+
+      # ============================================================
+      # 4. BUILD ARCHIVE
+      # ============================================================
+      - name: Build Archive
         script: |
+          set -e
+          set -o pipefail
+
           cd "$CM_BUILD_DIR"
 
-          APP_PATH="$CM_BUILD_DIR/build/3105.xcarchive/Products/Applications/3105.app"
-          IPA_DIR="$CM_BUILD_DIR/build/ios/ipa"
-          PAYLOAD_DIR="$CM_BUILD_DIR/build/ios/Payload"
+          echo "========================================"
+          echo "BUILD ARCHIVE"
+          echo "========================================"
 
-          echo "=== CREATE IPA ==="
-          echo "APP_PATH=$APP_PATH"
+          mkdir -p "$CM_BUILD_DIR/build"
 
-          if [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: 3105.app not found"
+          xcodebuild archive \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath "$CM_BUILD_DIR/$ARCHIVE_PATH" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -destination 'generic/platform=iOS'
+
+          echo ""
+          echo "========================================"
+          echo "ARCHIVE RESULT"
+          echo "========================================"
+
+          if [ -d "$CM_BUILD_DIR/$ARCHIVE_PATH" ]; then
+            echo "[OK] Archive created:"
+            echo "$CM_BUILD_DIR/$ARCHIVE_PATH"
+          else
+            echo "[ERROR] Archive was not created"
             exit 1
           fi
 
-          rm -rf "$PAYLOAD_DIR"
-          mkdir -p "$PAYLOAD_DIR"
-          mkdir -p "$IPA_DIR"
 
-          cp -R "$APP_PATH" "$PAYLOAD_DIR/3105.app"
+      # ============================================================
+      # 5. FIND APP
+      # ============================================================
+      - name: Check App
+        script: |
+          set -e
 
-          cd "$CM_BUILD_DIR/build/ios"
-          rm -f ipa/3105.ipa
-          zip -qry ipa/3105.ipa Payload
+          cd "$CM_BUILD_DIR"
+
+          echo "========================================"
+          echo "CHECK APP"
+          echo "========================================"
+
+          APP_DIR="$CM_BUILD_DIR/$ARCHIVE_PATH/Products/Applications"
+
+          if [ ! -d "$APP_DIR" ]; then
+            echo "ERROR: Applications directory not found:"
+            echo "$APP_DIR"
+            exit 1
+          fi
+
+          echo "Applications:"
+          ls -la "$APP_DIR"
+
+          APP_PATH=$(find "$APP_DIR" -maxdepth 1 -type d -name "*.app" | head -n 1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: No .app found"
+            exit 1
+          fi
 
           echo ""
-          echo "=== IPA CREATED ==="
-          ls -lh ipa/3105.ipa
+          echo "[OK] Found app:"
+          echo "$APP_PATH"
+
+
+      # ============================================================
+      # 6. CREATE UNSIGNED IPA
+      # ============================================================
+      - name: Create IPA
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          echo "========================================"
+          echo "CREATE IPA"
+          echo "========================================"
+
+          APP_DIR="$CM_BUILD_DIR/$ARCHIVE_PATH/Products/Applications"
+
+          APP_PATH=$(find "$APP_DIR" -maxdepth 1 -type d -name "*.app" | head -n 1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found"
+            exit 1
+          fi
+
+          APP_NAME=$(basename "$APP_PATH")
+
+          OUTPUT_DIR="$CM_BUILD_DIR/build/ios/ipa"
+          WORK_DIR="$CM_BUILD_DIR/build/ios/package"
+          PAYLOAD_DIR="$WORK_DIR/Payload"
+
+          echo "APP_PATH=$APP_PATH"
+          echo "APP_NAME=$APP_NAME"
+
+          rm -rf "$WORK_DIR"
+          rm -rf "$OUTPUT_DIR"
+
+          mkdir -p "$PAYLOAD_DIR"
+          mkdir -p "$OUTPUT_DIR"
+
+          echo ""
+          echo "Copying app to Payload..."
+
+          cp -R "$APP_PATH" "$PAYLOAD_DIR/$APP_NAME"
+
+          echo ""
+          echo "Payload contents:"
+          ls -la "$PAYLOAD_DIR"
+
+          echo ""
+          echo "Creating IPA..."
+
+          cd "$WORK_DIR"
+
+          zip -qry "$OUTPUT_DIR/3105.ipa" Payload
+
+          echo ""
+          echo "========================================"
+          echo "IPA CREATED"
+          echo "========================================"
+
+          ls -lh "$OUTPUT_DIR/3105.ipa"
+
+          if [ ! -f "$OUTPUT_DIR/3105.ipa" ]; then
+            echo "ERROR: IPA creation failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "[SUCCESS] IPA:"
+          echo "$OUTPUT_DIR/3105.ipa"
+
+
+      # ============================================================
+      # 7. VERIFY IPA
+      # ============================================================
+      - name: Verify IPA
+        script: |
+          set -e
+
+          IPA="$CM_BUILD_DIR/build/ios/ipa/3105.ipa"
+
+          echo "========================================"
+          echo "VERIFY IPA"
+          echo "========================================"
+
+          if [ ! -f "$IPA" ]; then
+            echo "ERROR: IPA not found"
+            exit 1
+          fi
+
+          echo "IPA size:"
+          ls -lh "$IPA"
+
+          echo ""
+          echo "IPA contents:"
+          unzip -l "$IPA" | head -n 50
+
+          echo ""
+          echo "[SUCCESS] Build completed"
+
 
     artifacts:
       - build/ios/ipa/*.ipa
