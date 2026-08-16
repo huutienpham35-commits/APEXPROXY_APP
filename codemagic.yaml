@@ -1,6 +1,6 @@
 workflows:
   ios-ipa:
-    name: APEX PROXY
+    name: Build IPA
     max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
@@ -10,12 +10,29 @@ workflows:
         XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
         XCODE_SCHEME: "ThreeOneOSFive"
     scripts:
-      - name: APEX PROXY
+      - name: Build Archive
         script: |
-          xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME" \
-            --config Debug
+          xcodebuild archive \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -archivePath build/ThreeOneOSFive.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -destination 'generic/platform=iOS'
+
+      - name: Export IPA
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath build/ThreeOneOSFive.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist /dev/null || true
+
+          # Tạo IPA thủ công nếu export thất bại
+          mkdir -p build/ios/ipa
+          cd build/ThreeOneOSFive.xcarchive/Products/Applications
+          zip -r ../../../../ios/ipa/ThreeOneOSFive.ipa ThreeOneOSFive.app
     artifacts:
       - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - build/**/*.xcarchive
