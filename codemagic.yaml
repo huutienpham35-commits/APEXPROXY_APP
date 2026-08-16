@@ -3,20 +3,74 @@ workflows:
     name: Build IPA
     max_build_duration: 120
     instance_type: mac_mini_m2
+
     environment:
       xcode: latest
       cocoapods: default
       vars:
         XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
         XCODE_SCHEME: "3105"
+
     scripts:
+      - name: Check BodyProxy Resources
+        script: |
+          cd "$CM_BUILD_DIR"
+
+          echo "========================================"
+          echo "CHECK BODYPROXY"
+          echo "========================================"
+          echo "CM_BUILD_DIR=$CM_BUILD_DIR"
+          echo "PWD=$(pwd)"
+
+          echo ""
+          echo "=== ROOT ==="
+          ls -la
+
+          echo ""
+          echo "=== ThreeOneOSFive ==="
+          ls -la ThreeOneOSFive || true
+
+          echo ""
+          echo "=== BodyProxy ==="
+          ls -la ThreeOneOSFive/BodyProxy || true
+
+          echo ""
+          echo "=== CACHE_RES FILES ==="
+          find "$CM_BUILD_DIR" -type f -name "*.cache_res" -print || true
+
+          echo ""
+          echo "=== GIT TRACKED CACHE_RES ==="
+          git ls-files | grep -i "\.cache_res$" || true
+
+          echo ""
+          echo "=== GIT STATUS ==="
+          git status --short
+
+          echo ""
+          echo "=== CHECK REQUIRED FILES ==="
+
+          for file in \
+            ThreeOneOSFive/BodyProxy/Body.cache_res \
+            ThreeOneOSFive/BodyProxy/Chest.cache_res \
+            ThreeOneOSFive/BodyProxy/Magic.cache_res \
+            ThreeOneOSFive/BodyProxy/Drag.cache_res
+          do
+            if [ -f "$file" ]; then
+              echo "[OK] $file"
+            else
+              echo "[MISSING] $file"
+            fi
+          done
+
       - name: Build Archive
         script: |
+          cd "$CM_BUILD_DIR"
+
           xcodebuild archive \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
-            -archivePath build/3105.xcarchive \
+            -archivePath "$CM_BUILD_DIR/build/3105.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -24,27 +78,34 @@ workflows:
 
       - name: Create IPA
         script: |
-          mkdir -p build/ios/ipa
-          cd build/3105.xcarchive/Products/Applications
-          zip -r ../../../../ios/ipa/3105.ipa *.app
+          cd "$CM_BUILD_DIR"
+
+          APP_PATH="$CM_BUILD_DIR/build/3105.xcarchive/Products/Applications/3105.app"
+          IPA_DIR="$CM_BUILD_DIR/build/ios/ipa"
+          PAYLOAD_DIR="$CM_BUILD_DIR/build/ios/Payload"
+
+          echo "=== CREATE IPA ==="
+          echo "APP_PATH=$APP_PATH"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: 3105.app not found"
+            exit 1
+          fi
+
+          rm -rf "$PAYLOAD_DIR"
+          mkdir -p "$PAYLOAD_DIR"
+          mkdir -p "$IPA_DIR"
+
+          cp -R "$APP_PATH" "$PAYLOAD_DIR/3105.app"
+
+          cd "$CM_BUILD_DIR/build/ios"
+          rm -f ipa/3105.ipa
+          zip -qry ipa/3105.ipa Payload
+
+          echo ""
+          echo "=== IPA CREATED ==="
+          ls -lh ipa/3105.ipa
+
     artifacts:
       - build/ios/ipa/*.ipa
       - build/**/*.xcarchive
-echo "=== CHECK BODYPROXY ==="
-
-echo "CM_BUILD_DIR=$CM_BUILD_DIR"
-pwd
-
-ls -la "$CM_BUILD_DIR"
-ls -la "$CM_BUILD_DIR/ThreeOneOSFive" || true
-ls -la "$CM_BUILD_DIR/ThreeOneOSFive/BodyProxy" || true
-
-echo "=== CACHE_RES FILES ==="
-find "$CM_BUILD_DIR" -type f -name "*.cache_res" -print || true
-
-echo "=== GIT TRACKED ==="
-cd "$CM_BUILD_DIR"
-git ls-files | grep -i "cache_res" || true
-
-echo "=== GIT STATUS ==="
-git status --short
