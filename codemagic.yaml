@@ -1,3 +1,21 @@
-git add codemagic.yaml
-git commit -m 'Add first workflow'
-git push
+workflows:
+  ios-ipa:
+    name: APEX PROXY
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      cocoapods: default
+      vars:
+        XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
+        XCODE_SCHEME: "ThreeOneOSFive"
+    scripts:
+      - name: APEX PROXY
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --config Debug
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
