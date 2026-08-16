@@ -1,13 +1,32 @@
 workflows:
-  list-schemes:
-    name: List Schemes
-    max_build_duration: 30
+  ios-ipa:
+    name: Build IPA
+    max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
       xcode: latest
+      cocoapods: default
+      vars:
+        XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
+        XCODE_SCHEME: "3105"
     scripts:
-      - name: List available schemes
+      - name: Build Archive
         script: |
-          echo "===== Listing schemes ====="
-          xcodebuild -list -project ThreeOneOSFive.xcodeproj
-          echo "===== Done ====="
+          xcodebuild archive \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath build/3105.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -destination 'generic/platform=iOS'
+
+      - name: Create IPA
+        script: |
+          mkdir -p build/ios/ipa
+          cd build/3105.xcarchive/Products/Applications
+          zip -r ../../../../ios/ipa/3105.ipa *.app
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/**/*.xcarchive
