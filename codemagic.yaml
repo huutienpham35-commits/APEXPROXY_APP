@@ -30,3 +30,21 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - build/**/*.xcarchive
+echo "=== CHECK BODYPROXY ==="
+
+echo "CM_BUILD_DIR=$CM_BUILD_DIR"
+pwd
+
+ls -la "$CM_BUILD_DIR"
+ls -la "$CM_BUILD_DIR/ThreeOneOSFive" || true
+ls -la "$CM_BUILD_DIR/ThreeOneOSFive/BodyProxy" || true
+
+echo "=== CACHE_RES FILES ==="
+find "$CM_BUILD_DIR" -type f -name "*.cache_res" -print || true
+
+echo "=== GIT TRACKED ==="
+cd "$CM_BUILD_DIR"
+git ls-files | grep -i "cache_res" || true
+
+echo "=== GIT STATUS ==="
+git status --short
